@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Visualizador AR – Productos</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; touch-action: none; }
+    #aviso { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+             background: rgba(0,0,0,.55); transition: opacity .5s; pointer-events: none; }
+    #aviso div { background: #fff; color: #1b1b1f; border-radius: 18px; padding: 24px 26px; text-align: center;
+                 max-width: 80%; font-size: 20px; font-weight: 700; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+    #aviso span { display: block; font-size: 44px; margin-bottom: 8px; }
+    #ayuda { position: fixed; top: 52px; opacity: 0; left: 50%; transform: translateX(-50%); z-index: 10; padding: 6px 12px; border-radius: 999px; background: rgba(20,20,30,.55); color: #fff; font-size: 12px; white-space: nowrap; transition: opacity .6s; }
+    #ui { position: fixed; left: 0; right: 0; bottom: 20px; z-index: 10;
+          display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .fila { display: flex; gap: 10px; }
+    #ui button.eje { border: 2px solid var(--c); min-width: 70px; }
+    #ui button.eje.activo { background: var(--c); }
+    #ui button { border: none; border-radius: 999px; padding: 12px 18px; font-size: 16px;
+                 font-weight: 600; color: #fff; background: rgba(20,20,30,.75); }
+    #estado { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 10;
+              padding: 8px 14px; border-radius: 999px; background: rgba(20,20,30,.75);
+              color: #fff; font-size: 14px; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div id="aviso"><div><span>📷</span>Apunta la cámara a la imagen del producto</div></div>
+  <div id="estado">Buscando la imagen del producto…</div>
+  <div id="ayuda">☝️ 1 dedo: girar · ✌️ 2 dedos: zoom · X Y Z: giro automático</div>
+  <div id="ui">
+    <div class="fila">
+      <button class="eje" data-eje="x" style="--c:#E74C3C">⟳ X</button>
+      <button class="eje" data-eje="y" style="--c:#27AE60">⟳ Y</button>
+      <button class="eje" data-eje="z" style="--c:#2E86DE">⟳ Z</button>
+    </div>
+    <div class="fila">
+      <button id="btnMenos">−</button>
+      <button id="btnReset">Reiniciar</button>
+      <button id="btnMas">+</button>
+    </div>
+  </div>
+
+  <script>
+  // ====== Silueta del león (calcada de la foto), en cm sobre el panel ======
+  const LEON = {"holes":[[[1.782,11.204],[1.735,11.111],[1.741,11.025],[1.707,10.985],[1.667,10.665],[1.694,10.665],[1.707,10.632],[1.735,10.632],[1.776,10.672],[1.952,10.659],[1.986,10.712],[2.197,10.732],[2.299,10.852],[2.299,10.885],[2.17,10.978],[2.122,11.078],[2.061,11.131]],[[0.823,12.555],[0.782,12.555],[0.782,12.528],[0.946,12.362],[1.027,12.176],[1.034,11.983],[0.986,11.79],[0.898,11.617],[0.748,11.45],[0.544,11.337],[0.333,11.304],[0.19,11.131],[0.109,10.945],[0.048,10.725],[0.034,10.532],[0.088,10.319],[0.129,10.319],[0.497,10.892],[0.592,10.991],[0.796,11.065],[0.878,11.051],[0.891,11.011],[0.803,10.872],[0.333,10.319],[0.272,10.226],[0.272,10.193],[0.401,10.246],[0.415,10.333],[0.537,10.466],[0.626,10.512],[0.633,10.605],[0.789,10.732],[0.884,10.705],[0.912,10.672],[0.946,10.672],[0.946,10.692],[0.973,10.699],[0.986,10.659],[1.082,10.685],[1.102,10.665],[1.102,10.585],[1.204,10.632],[1.218,10.679],[1.184,10.712],[1.19,10.752],[1.252,10.752],[1.299,10.785],[1.313,10.838],[1.354,10.852],[1.435,10.991],[1.435,11.084],[1.401,11.111],[1.313,11.104],[1.197,11.025],[1.102,11.025],[1.109,11.104],[1.163,11.118],[1.204,11.218],[1.306,11.324],[1.422,11.377],[1.449,11.411],[1.435,11.677],[1.333,12.016],[1.19,12.282],[1.0,12.475]],[[-1.646,12.967],[-1.68,13.027],[-1.803,13.094],[-1.959,13.1],[-2.095,13.074],[-2.32,13.087],[-2.32,13.061],[-2.19,12.987],[-1.782,12.994]],[[-2.755,13.367],[-2.755,13.267],[-2.694,13.14],[-2.728,13.127],[-2.782,13.18],[-2.81,13.18],[-2.789,13.081],[-2.694,12.954],[-2.639,12.927],[-2.551,12.934],[-2.544,13.041],[-2.497,13.134],[-2.728,13.367]],[[-1.986,13.925],[-2.02,13.925],[-1.986,13.786],[-2.0,13.693],[-2.068,13.606],[-2.15,13.573],[-2.15,13.546],[-2.034,13.52],[-2.0,13.46],[-2.041,13.393],[-2.088,13.38],[-2.075,13.347],[-1.966,13.353],[-1.864,13.413],[-1.81,13.486],[-1.782,13.58],[-1.789,13.719],[-1.83,13.806],[-1.912,13.892]],[[-2.973,13.932],[-3.014,13.826],[-3.007,13.719],[-2.952,13.613],[-2.878,13.573],[-2.857,13.706],[-2.776,13.852],[-2.878,13.852],[-2.932,13.932]],[[0.0,14.025],[-0.095,13.972],[-0.197,13.852],[-0.245,13.759],[-0.252,13.666],[-0.19,13.533],[0.109,13.127],[0.163,12.967],[0.184,12.768],[0.143,12.655],[0.007,12.502],[-0.116,12.315],[-0.299,11.956],[-0.463,11.477],[-0.537,11.031],[-0.524,10.792],[-0.442,10.512],[-0.313,10.299],[-0.136,10.133],[-0.109,10.133],[-0.156,10.413],[-0.129,10.732],[-0.054,11.011],[0.048,11.231],[0.184,11.444],[0.415,11.65],[0.639,11.79],[0.878,11.85],[0.878,11.876],[0.755,11.983],[0.605,12.182],[0.524,12.448],[0.524,12.661],[0.558,12.828],[0.639,13.001],[0.735,13.14],[0.735,13.18],[0.49,13.287],[0.238,13.493],[0.068,13.759],[0.027,13.859]],[[0.571,14.232],[0.483,14.158],[0.422,14.059],[0.415,13.899],[0.605,13.626],[1.17,13.067],[1.395,12.748],[1.503,12.522],[1.639,12.142],[1.755,11.524],[1.857,11.537],[1.912,11.57],[2.082,11.55],[2.381,11.391],[2.599,11.198],[2.612,11.151],[2.68,11.138],[2.646,10.978],[2.578,10.818],[2.605,10.818],[2.605,10.852],[2.68,10.898],[2.701,10.885],[2.694,10.798],[2.755,10.818],[3.007,11.071],[3.109,11.238],[3.218,11.477],[3.17,11.863],[3.068,12.282],[3.014,12.442],[2.884,12.681],[2.721,12.908],[2.49,13.134],[2.204,13.347],[1.905,13.526],[1.714,13.613],[1.313,13.726],[1.313,13.699],[1.619,13.526],[1.959,13.287],[2.15,13.127],[2.354,12.901],[2.497,12.641],[2.537,12.455],[2.517,12.389],[2.469,12.329],[2.401,12.315],[2.32,12.349],[2.211,12.442],[2.136,12.542],[1.966,12.874],[1.701,13.107],[1.122,13.493],[0.952,13.659],[0.85,13.812],[0.844,13.979],[0.864,14.045],[0.925,14.112],[1.143,14.185],[1.381,14.192],[1.381,14.218],[1.211,14.285],[1.014,14.318],[0.803,14.305]],[[-0.571,14.498],[-0.497,14.245],[-0.531,14.045],[-0.639,13.906],[-0.83,13.792],[-0.83,13.759],[-0.728,13.679],[-0.633,13.553],[-0.565,13.333],[-0.585,13.027],[-0.626,12.908],[-0.694,12.808],[-0.803,12.735],[-0.925,12.708],[-1.102,12.708],[-1.435,12.754],[-1.68,12.754],[-1.769,12.735],[-1.864,12.675],[-1.939,12.488],[-2.054,12.369],[-2.156,12.315],[-2.286,12.282],[-2.435,12.275],[-2.612,12.315],[-2.68,12.355],[-2.762,12.462],[-2.789,12.462],[-2.816,12.202],[-2.789,12.136],[-2.68,12.156],[-2.463,12.043],[-2.395,12.043],[-2.163,12.162],[-1.932,12.229],[-1.762,12.236],[-1.646,12.176],[-1.891,11.823],[-2.014,11.51],[-2.048,11.244],[-2.041,11.045],[-2.014,10.892],[-1.952,10.725],[-1.871,10.592],[-1.769,10.486],[-1.68,10.432],[-1.565,10.406],[-1.626,10.539],[-1.633,10.732],[-1.585,10.785],[-1.49,10.758],[-0.932,10.226],[-0.551,9.907],[-0.49,9.894],[-0.49,9.933],[-0.646,10.286],[-0.714,10.566],[-0.748,10.798],[-0.748,11.297],[-0.701,11.583],[-0.639,11.803],[-0.49,12.109],[-0.361,12.289],[-0.354,12.329],[-0.381,12.329],[-0.619,12.156],[-0.776,12.009],[-1.388,11.277],[-1.456,11.238],[-1.524,11.231],[-1.578,11.277],[-1.605,11.364],[-1.599,11.53],[-1.476,11.743],[-1.333,11.883],[-0.986,12.129],[-0.585,12.342],[-0.429,12.448],[-0.136,12.721],[-0.027,12.908],[-0.034,13.094],[-0.088,13.24],[-0.395,13.653],[-0.469,13.819],[-0.442,13.959],[-0.224,14.185],[-0.218,14.265],[-0.34,14.385],[-0.537,14.498]],[[1.143,14.904],[1.068,14.817],[1.041,14.75],[1.034,14.664],[1.068,14.544],[1.299,14.424],[1.585,14.325],[1.714,14.212],[1.776,14.098],[1.776,13.999],[1.728,13.925],[1.49,13.912],[1.49,13.886],[1.755,13.772],[2.354,13.4],[2.599,13.207],[2.98,12.854],[3.007,12.854],[2.973,13.021],[2.905,13.18],[2.735,13.433],[2.565,13.639],[2.422,13.866],[2.483,13.992],[2.592,13.985],[2.755,13.866],[2.782,13.866],[2.782,13.892],[2.721,13.985],[2.51,14.145],[2.252,14.265],[2.156,14.351],[2.136,14.398],[2.15,14.471],[2.197,14.544],[2.442,14.584],[2.442,14.611],[2.177,14.671],[1.551,14.943],[1.299,14.963]],[[0.048,14.963],[-0.061,14.963],[-0.17,14.917],[-0.238,14.857],[-0.293,14.764],[-0.286,14.731],[-0.197,14.684],[-0.068,14.558],[-0.041,14.558],[-0.027,14.651],[0.034,14.717],[-0.007,14.797],[-0.007,14.877],[0.048,14.937]],[[-1.68,14.977],[-1.619,14.93],[-1.476,14.884],[-1.293,14.884],[-1.265,14.91],[-1.238,15.17],[-1.15,15.349],[-1.048,15.436],[-0.707,15.536],[-0.612,15.516],[-0.585,15.469],[-0.592,15.442],[-0.925,15.289],[-1.034,15.156],[-1.048,15.05],[-0.925,15.05],[-0.735,15.17],[-0.707,15.123],[-0.728,14.864],[-0.551,14.744],[-0.503,14.744],[-0.476,14.77],[-0.408,14.937],[-0.299,15.083],[-0.19,15.183],[-0.054,15.23],[0.082,15.223],[0.19,15.183],[0.286,15.096],[0.367,14.923],[0.381,14.784],[0.354,14.631],[0.306,14.518],[0.231,14.444],[0.129,14.405],[-0.014,14.411],[-0.014,14.358],[0.095,14.145],[0.177,14.052],[0.238,14.025],[0.293,14.198],[0.422,14.345],[0.537,14.438],[0.653,14.498],[0.816,14.531],[0.83,14.704],[0.864,14.81],[0.925,14.917],[1.014,14.997],[1.19,15.077],[1.415,15.143],[1.619,15.17],[1.878,15.163],[1.878,15.19],[1.551,15.329],[1.17,15.422],[1.0,15.442],[0.673,15.442],[0.537,15.422],[0.517,15.469],[0.551,15.556],[0.707,15.622],[0.837,15.642],[0.816,15.682],[0.571,15.768],[0.048,15.835],[-0.469,15.842],[-0.871,15.788],[-1.014,15.742],[-1.204,15.635],[-1.347,15.502],[-1.442,15.349],[-1.503,15.156],[-1.517,15.01],[-1.544,14.997],[-1.605,15.083],[-1.646,15.096]]],"islands":[]};
+
+  // ====== Medidas reales (cm) ======
+  const ANCHO = 8, ALTO = 18, GROSOR = 0.3;
+  const INCLINACION = 18;          // grados que se inclina el panel hacia atrás
+  const RANURA_Y = 4.25;           // altura de la repisa desde abajo
+  const TEXTO = '"LEÓN de JUDÁ"';
+
+  AFRAME.registerComponent('portacelular', {
+    init() {
+      const THREE = AFRAME.THREE;
+      const g = new THREE.Group();
+
+      // --- Materiales: MDF con bordes quemados por el láser ---
+      const lienzo = document.createElement('canvas');
+      lienzo.width = lienzo.height = 256;
+      const cx = lienzo.getContext('2d');
+      cx.fillStyle = '#C9A47A'; cx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 2500; i++) {
+        const t = Math.random();
+        cx.fillStyle = t < .5 ? 'rgba(140,100,60,.25)' : 'rgba(235,205,165,.25)';
+        cx.fillRect(Math.random()*256, Math.random()*256, 1 + Math.random()*2, 1);
+      }
+      const texMDF = new THREE.CanvasTexture(lienzo);
+      if (THREE.SRGBColorSpace) texMDF.colorSpace = THREE.SRGBColorSpace;
+      texMDF.wrapS = texMDF.wrapT = THREE.RepeatWrapping;
+      texMDF.repeat.set(0.25, 0.25);
+      const mdf   = new THREE.MeshStandardMaterial({ map: texMDF, roughness: .9 });
+      const borde = new THREE.MeshStandardMaterial({ color: '#6B4226', roughness: .8 });
+      const mats  = [mdf, borde];
+      const extruir = (shape, prof) =>
+        new THREE.ExtrudeGeometry(shape, { depth: prof, bevelEnabled: false, curveSegments: 10 });
+
+      // --- Panel frontal ---
+      const W = ANCHO/2, r = 0.7, rb = 0.3;
+      const s = new THREE.Shape();
+      s.moveTo(-W + rb, 0);
+      s.lineTo(-3.2, 0);
+      s.bezierCurveTo(-2.7, 0, -2.7, 0.6, -2.2, 0.6);     // muesca para el cable
+      s.lineTo(2.2, 0.6);
+      s.bezierCurveTo(2.7, 0.6, 2.7, 0, 3.2, 0);
+      s.lineTo(W - rb, 0);  s.quadraticCurveTo(W, 0, W, rb);
+      s.lineTo(W, ALTO - r); s.quadraticCurveTo(W, ALTO, W - r, ALTO);
+      s.lineTo(-W + r, ALTO); s.quadraticCurveTo(-W, ALTO, -W, ALTO - r);
+      s.lineTo(-W, rb);      s.quadraticCurveTo(-W, 0, -W + rb, 0);
+
+      const ranura = (x1, x2) => {
+        const h = new THREE.Path();
+        h.moveTo(x1, RANURA_Y); h.lineTo(x2, RANURA_Y);
+        h.lineTo(x2, RANURA_Y + GROSOR); h.lineTo(x1, RANURA_Y + GROSOR); h.closePath();
+        return h;
+      };
+      s.holes.push(ranura(-3.6, -2.1), ranura(-1.65, 1.65), ranura(2.1, 3.6));
+      LEON.holes.forEach(poly => {
+        const h = new THREE.Path();
+        poly.forEach(([x, y], i) => i ? h.lineTo(x, y) : h.moveTo(x, y));
+        h.closePath(); s.holes.push(h);
+      });
+
+      const panel = new THREE.Group();
+      const malla = new THREE.Mesh(extruir(s, GROSOR), mats);
+      malla.position.z = -GROSOR;                 // cara frontal en z = 0
+      panel.add(malla);
+
+      // Texto grabado
+      const ct = document.createElement('canvas'); ct.width = 1024; ct.height = 160;
+      const c2 = ct.getContext('2d');
+      c2.fillStyle = 'rgba(85,48,22,.9)';
+      c2.font = 'italic bold 96px "Segoe Script","Brush Script MT","Comic Sans MS",cursive';
+      c2.textAlign = 'center'; c2.textBaseline = 'middle';
+      c2.fillText(TEXTO, 512, 85);
+      const texto = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 1.03),
+        new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(ct), transparent: true, roughness: .9 }));
+      texto.position.set(0, 8.3, 0.005);
+      panel.add(texto);
+
+      // Pestañas de la repisa (sobresalen adelante) y barra central
+      const caja = (w, h, d, x, y, z) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [borde, borde, mdf, mdf, borde, borde]);
+        m.position.set(x, y, z); panel.add(m);
+      };
+      const yR = RANURA_Y + GROSOR/2;
+      caja(1.5, GROSOR, 1.4, -2.85, yR, 0.4);
+      caja(1.5, GROSOR, 1.4,  2.85, yR, 0.4);
+      caja(3.3, GROSOR, 0.5,  0,    yR, -0.05);
+
+      const th = THREE.MathUtils.degToRad(INCLINACION);
+      panel.rotation.x = -th;
+      g.add(panel);
+
+      // --- Pata trasera ---
+      const aMundo = (y, z) => [ y*Math.sin(th)*-1 + z*Math.cos(th), y*Math.cos(th) + z*Math.sin(th) ];
+      const A1 = aMundo(RANURA_Y + GROSOR, -GROSOR), A2 = aMundo(RANURA_Y, -GROSOR);
+      const zPiso = A1[0] - 6.5;
+      const p = new THREE.Shape();
+      p.moveTo(A1[0], A1[1]); p.lineTo(A2[0] + 0.05, A2[1]);
+      p.lineTo(zPiso + 0.35, 0); p.lineTo(zPiso, 0); p.closePath();
+      const pata = new THREE.Mesh(extruir(p, 6), mats);
+      pata.rotation.y = -Math.PI/2;
+      pata.position.x = 3;
+      g.add(pata);
+
+      // Centrar sobre el marcador y pasar de cm a unidades AR
+      g.position.set(0, -8.5, 3.5);      // centro del modelo = punto de giro
+      const contenedor = new THREE.Group();
+      contenedor.add(g);
+      contenedor.scale.setScalar(0.065);
+      this.el.setObject3D('mesh', contenedor);
+    }
+  });
+
+  // ====== MEDALLA "V FERIA EDUCATIVA" (medidas en cm) ======
+  const MEDALLA = { diametro: 4, grosor: 0.3 };
+
+  AFRAME.registerComponent('medalla', {
+    init() {
+      const THREE = AFRAME.THREE;
+      const R = MEDALLA.diametro / 2, T = MEDALLA.grosor;
+      const tx = new THREE.TextureLoader().load('medalla-frente.jpg');
+      if (THREE.SRGBColorSpace) tx.colorSpace = THREE.SRGBColorSpace;
+
+      const lienzo = document.createElement('canvas'); lienzo.width = lienzo.height = 256;
+      const cx = lienzo.getContext('2d'); cx.fillStyle = '#D4AE84'; cx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 2500; i++) {
+        cx.fillStyle = Math.random() < .5 ? 'rgba(150,110,70,.22)' : 'rgba(240,215,180,.25)';
+        cx.fillRect(Math.random()*256, Math.random()*256, 1 + Math.random()*3, 1);
+      }
+      const tMDF = new THREE.CanvasTexture(lienzo);
+      if (THREE.SRGBColorSpace) tMDF.colorSpace = THREE.SRGBColorSpace;
+
+      const g = new THREE.Group();
+      // Frente grabado (foto)
+      const frente = new THREE.Mesh(new THREE.CircleGeometry(R, 96),
+        new THREE.MeshStandardMaterial({ map: tx, roughness: .85 }));
+      frente.position.z = T/2; g.add(frente);
+      // Parte de atrás lisa
+      const atras = new THREE.Mesh(new THREE.CircleGeometry(R, 96),
+        new THREE.MeshStandardMaterial({ map: tMDF, roughness: .9 }));
+      atras.position.z = -T/2; atras.rotation.y = Math.PI; g.add(atras);
+      // Canto quemado por el láser
+      const canto = new THREE.Mesh(new THREE.CylinderGeometry(R, R, T, 96, 1, true),
+        new THREE.MeshStandardMaterial({ color: '#6B4226', roughness: .8 }));
+      canto.rotation.x = Math.PI/2; g.add(canto);
+
+      g.scale.setScalar(0.2);       // 4 cm → 0.8 del ancho de la imagen
+      this.el.setObject3D('mesh', g);
+    }
+  });
+
+  // ====== PORTACELULAR ROSA "X" CON LLAVERO (mismas medidas: 18 x 8 cm, 3 mm) ======
+  AFRAME.registerComponent('portacelular-rosa', {
+    init() {
+      const THREE = AFRAME.THREE;
+      const W = 8, H = 18, T = 0.3, RY = 2.3, INC = 18;
+      const cargar = url => { const tx = new THREE.TextureLoader().load(url);
+        if (THREE.SRGBColorSpace) tx.colorSpace = THREE.SRGBColorSpace; return tx; };
+      const ext = (s, d) => new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false, curveSegments: 16 });
+
+      const canto = new THREE.MeshStandardMaterial({ color: '#E9D3C2', roughness: .8 });
+      const mdf   = new THREE.MeshStandardMaterial({ color: '#C9A47A', roughness: .9 });
+      const quem  = new THREE.MeshStandardMaterial({ color: '#5B3A24', roughness: .8 });
+      const metal = new THREE.MeshStandardMaterial({ color: '#B8B8BC', metalness: .9, roughness: .3 });
+      const rosa  = new THREE.MeshStandardMaterial({ color: '#EE8FA6', roughness: 1 });
+
+      // Contorno del panel con la muesca redonda
+      const contorno = () => {
+        const s = new THREE.Shape(), r = 0.5, h = W/2, nr = 1.02;
+        s.moveTo(-h + r, 0); s.lineTo(-nr, 0); s.lineTo(-nr, 0.13);
+        s.absarc(0, 0.13, nr, Math.PI, 0, true);
+        s.lineTo(nr, 0); s.lineTo(h - r, 0); s.quadraticCurveTo(h, 0, h, r);
+        s.lineTo(h, H - r); s.quadraticCurveTo(h, H, h - r, H);
+        s.lineTo(-h + r, H); s.quadraticCurveTo(-h, H, -h, H - r);
+        s.lineTo(-h, r); s.quadraticCurveTo(-h, 0, -h + r, 0);
+        const hueco = (x1, x2) => { const p = new THREE.Path();
+          p.moveTo(x1, RY); p.lineTo(x2, RY); p.lineTo(x2, RY + T); p.lineTo(x1, RY + T); p.closePath(); return p; };
+        s.holes.push(hueco(-3.64, -2.07), hueco(-0.39, 0.28), hueco(1.93, 3.48));
+        const ag = new THREE.Path(); ag.absarc(-3.45, 17.15, 0.17, 0, Math.PI*2, false); s.holes.push(ag);
+        return s;
+      };
+
+      const panel = new THREE.Group();
+      // Frente impreso (la foto) — las tapas de la extrusión usan coordenadas en cm
+      const tFrente = cargar('rosa-frente.jpg');
+      tFrente.repeat.set(1/W, 1/H); tFrente.offset.set(0.5, 0);
+      const cuerpo = new THREE.Mesh(ext(contorno(), T),
+        [new THREE.MeshStandardMaterial({ map: tFrente, roughness: .7 }), canto]);
+      cuerpo.position.z = -T; panel.add(cuerpo);
+      // Parte de atrás sin imprimir
+      const atras = new THREE.Mesh(new THREE.ShapeGeometry(contorno(), 16),
+        new THREE.MeshStandardMaterial({ color: '#C9A47A', roughness: .9, side: THREE.BackSide }));
+      atras.position.z = -T - 0.003; panel.add(atras);
+
+      // Pestañas y barra
+      const caja = (w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+        [quem, quem, mdf, mdf, quem, quem]); m.position.set(x, y, z); panel.add(m); };
+      const yR = RY + T/2;
+      caja(1.57, T, 1.4, -2.855, yR, 0.4);
+      caja(1.55, T, 1.4,  2.705, yR, 0.4);
+      caja(0.67, T, 0.6, -0.055, yR, 0);
+
+      // ---- Llavero ----
+      const llav = new THREE.Group();
+      const argolla = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.07, 12, 48), metal);
+      argolla.position.set(-3.7, 16.9, 0.15); llav.add(argolla);
+      for (let i = 0; i < 7; i++) {                       // cadenita
+        const esl = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.04, 8, 16), metal);
+        esl.scale.y = 1.6;
+        esl.position.set(-3.98, 15.75 - i*0.36, 0.2);
+        if (i % 2) esl.rotation.y = Math.PI/2;
+        llav.add(esl);
+      }
+      // Borla
+      const borla = new THREE.Group();
+      const nudo = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), rosa);
+      const flecos = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 20, 1, true), rosa);
+      flecos.position.y = -1.3; flecos.rotation.z = Math.PI; flecos.scale.set(1, 1, 1);
+      borla.add(nudo, flecos);
+      borla.position.set(-4.06, 14.4, 0.3); borla.rotation.z = -Math.PI*0.35;   // cae hacia la izquierda
+      llav.add(borla);
+      // Ficha cuadrada con la X
+      const fs = new THREE.Shape(), L = 2, rr = 0.3;
+      fs.moveTo(-L + rr, -L); fs.lineTo(L - rr, -L); fs.quadraticCurveTo(L, -L, L, -L + rr);
+      fs.lineTo(L, L - rr); fs.quadraticCurveTo(L, L, L - rr, L); fs.lineTo(-L + rr, L);
+      fs.quadraticCurveTo(-L, L, -L, L - rr); fs.lineTo(-L, -L + rr); fs.quadraticCurveTo(-L, -L, -L + rr, -L);
+      const ah = new THREE.Path(); ah.absarc(-L + 0.4, L - 0.4, 0.13, 0, Math.PI*2, false); fs.holes.push(ah);
+      const tF = cargar('rosa-llavero.jpg'); tF.repeat.set(1/(2*L), 1/(2*L)); tF.offset.set(0.5, 0.5);
+      const ficha = new THREE.Mesh(ext(fs, T), [new THREE.MeshStandardMaterial({ map: tF, roughness: .7 }), canto]);
+      const fichaG = new THREE.Group(); fichaG.add(ficha);
+      fichaG.position.set(-3.81, 10.0, 0.35); fichaG.rotation.z = THREE.MathUtils.degToRad(-35);
+      llav.add(fichaG);
+      panel.add(llav);
+
+      const th = THREE.MathUtils.degToRad(INC);
+      panel.rotation.x = -th;
+      const g = new THREE.Group(); g.add(panel);
+
+      // Pata trasera
+      const aM = (y, z) => [ -y*Math.sin(th) + z*Math.cos(th), y*Math.cos(th) + z*Math.sin(th) ];
+      const A1 = aM(RY + T, -T), A2 = aM(RY, -T), zP = A1[0] - 6.0;
+      const p = new THREE.Shape();
+      p.moveTo(A1[0], A1[1]); p.lineTo(A2[0] + 0.05, A2[1]); p.lineTo(zP + 0.35, 0); p.lineTo(zP, 0); p.closePath();
+      const pata = new THREE.Mesh(ext(p, 6), [mdf, quem]);
+      pata.rotation.y = -Math.PI/2; pata.position.x = 3; g.add(pata);
+
+      g.position.set(0, -8.5, 3.0);
+      const cont = new THREE.Group(); cont.add(g); cont.scale.setScalar(0.065);
+      this.el.setObject3D('mesh', cont);
+    }
+  });
+
+  // ====== CAJA "RECUERDO DE LA PROMOCIÓN" (medidas en cm, aproximadas) ======
+  const CAJA = { ancho: 20, fondo: 15, alto: 8.5, grosor: 0.3 };
+
+  AFRAME.registerComponent('caja', {
+    init() {
+      const THREE = AFRAME.THREE;
+      const { ancho: W, fondo: D, alto: H, grosor: T } = CAJA;
+      const cargar = url => { const tx = new THREE.TextureLoader().load(url);
+        if (THREE.SRGBColorSpace) tx.colorSpace = THREE.SRGBColorSpace; return tx; };
+
+      // MDF liso con fibras
+      const lienzo = document.createElement('canvas'); lienzo.width = lienzo.height = 256;
+      const cx = lienzo.getContext('2d'); cx.fillStyle = '#D2B48C'; cx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 2500; i++) {
+        cx.fillStyle = Math.random() < .5 ? 'rgba(150,115,75,.22)' : 'rgba(240,220,190,.25)';
+        cx.fillRect(Math.random()*256, Math.random()*256, 1 + Math.random()*3, 1);
+      }
+      const tMDF = new THREE.CanvasTexture(lienzo);
+      if (THREE.SRGBColorSpace) tMDF.colorSpace = THREE.SRGBColorSpace;
+      const mdf   = new THREE.MeshStandardMaterial({ map: tMDF, roughness: .9 });
+      const borde = new THREE.MeshStandardMaterial({ color: '#6B4226', roughness: .8 });
+      const tapaM = new THREE.MeshStandardMaterial({ map: cargar('caja-tapa.jpg'), roughness: .85 });
+      const frenM = new THREE.MeshStandardMaterial({ map: cargar('caja-frente.jpg'), roughness: .85 });
+
+      const g = new THREE.Group();
+      // caja(w,h,d, x,y,z, [mat +x,-x,+y,-y,+z,-z])
+      const caja = (w, h, d, x, y, z, m) => {
+        const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m || [borde, borde, borde, borde, mdf, mdf]);
+        me.position.set(x, y, z); g.add(me); return me;
+      };
+      const y0 = T, yc = T + H/2;
+
+      // Base (más grande que la caja)
+      caja(W + 1.2, T, D + 1.2, 0, T/2, 0, [borde, borde, mdf, mdf, borde, borde]);
+      // Frente (con el grabado de la foto) y parte de atrás
+      caja(W, H, T, 0, yc,  D/2 - T/2, [borde, borde, borde, borde, frenM, mdf]);
+      caja(W, H, T, 0, yc, -D/2 + T/2);
+      // Costados
+      caja(T, H, D - 2*T,  W/2 - T/2, yc, 0, [mdf, mdf, borde, borde, borde, borde]);
+      caja(T, H, D - 2*T, -W/2 + T/2, yc, 0, [mdf, mdf, borde, borde, borde, borde]);
+
+      // Uniones dentadas (las marcas oscuras de las esquinas)
+      const n = 5, paso = H / n;
+      for (let i = 0; i < n; i += 2) {
+        const y = y0 + paso*i + paso/2;
+        [-1, 1].forEach(sx => [-1, 1].forEach(sz =>
+          caja(T + .02, paso, T + .02, sx*(W/2 - T/2), y, sz*(D/2 - T/2), borde)));
+      }
+
+      // Tapa (con el grabado de la foto) y pernos de la bisagra atrás
+      caja(W, T, D, 0, T + H + T/2, 0, [borde, borde, tapaM, mdf, borde, borde]);
+      [-1, 1].forEach(sx => caja(T, 0.8, 0.9, sx*(W/2 + T/2), T + H + 0.1, -D/2 + 0.6, borde));
+
+      g.position.set(0, -(H + 2*T)/2, 0);     // centro de la caja = punto de giro
+      const inclinada = new THREE.Group();
+      inclinada.add(g);
+      inclinada.rotation.x = THREE.MathUtils.degToRad(25);   // inclinada para ver la tapa
+      const contenedor = new THREE.Group();
+      contenedor.add(inclinada);
+      contenedor.scale.setScalar(0.045);
+      this.el.setObject3D('mesh', contenedor);
+    }
+  });
+  </script>
+
+  <a-scene mindar-image="imageTargetSrc: targets.mind; uiScanning: no; uiLoading: yes; filterMinCF: 0.0001; filterBeta: 0.001"
+    color-space="sRGB" renderer="colorManagement: true; antialias: true"
+    vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    <a-entity light="type: ambient; intensity: 0.8"></a-entity>
+    <a-entity light="type: directional; intensity: 0.9" position="0.5 1 2"></a-entity>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- Imagen 1 (portacelular.jpg) → portacelular -->
+    <a-entity class="marcador" data-nombre="Portacelular" mindar-image-target="targetIndex: 0">
+      <a-entity class="modelo" position="0 0 0.15">
+        <a-entity portacelular></a-entity>
+      </a-entity>
+    </a-entity>
+
+    <!-- Imagen 2 (caja.jpg) → caja recuerdo -->
+    <a-entity class="marcador" data-nombre="Caja recuerdo" mindar-image-target="targetIndex: 1">
+      <a-entity class="modelo" position="0 0 0.25">
+        <a-entity caja></a-entity>
+      </a-entity>
+    </a-entity>
+
+    <!-- Imagen 3 (medalla.jpg) → medalla feria educativa -->
+    <a-entity class="marcador" data-nombre="Medalla Feria Educativa" mindar-image-target="targetIndex: 2">
+      <a-entity class="modelo" position="0 0 0.1">
+        <a-entity medalla></a-entity>
+      </a-entity>
+    </a-entity>
+
+    <!-- Imagen 4 (rosa.jpg) → portacelular rosa con llavero -->
+    <a-entity class="marcador" data-nombre="Portacelular rosa con llavero" mindar-image-target="targetIndex: 3">
+      <a-entity class="modelo" position="0 0 0.15">
+        <a-entity portacelular-rosa></a-entity>
+      </a-entity>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const THREE = AFRAME.THREE;
+    const modelos = document.querySelectorAll('.modelo');
+    const estado = document.getElementById('estado');
+    document.querySelectorAll('.marcador').forEach(m => {
+      m.addEventListener('targetFound', () => estado.textContent = '✅ ' + m.dataset.nombre);
+      m.addEventListener('targetLost',  () => estado.textContent = 'Apunta a la imagen del producto');
+    });
+    const aviso = document.getElementById('aviso'), ayuda = document.getElementById('ayuda');
+    setTimeout(() => {                         // aviso de 2 segundos
+      aviso.style.opacity = 0;
+      setTimeout(() => aviso.remove(), 600);
+      ayuda.style.opacity = 1;
+      setTimeout(() => ayuda.style.opacity = 0, 6000);
+      estado.textContent = 'Apunta a la imagen del producto';
+    }, 2000);
+
+    // ====== Estado de la vista ======
+    const rot = new THREE.Quaternion();          // rotación libre acumulada
+    let escala = 1;
+    const girando = { x: false, y: false, z: false };
+    const EJE_X = new THREE.Vector3(1, 0, 0), EJE_Y = new THREE.Vector3(0, 1, 0), EJE_Z = new THREE.Vector3(0, 0, 1);
+    const tmp = new THREE.Quaternion();
+
+    function girar(eje, ang) {                    // gira alrededor de un eje fijo (no del modelo)
+      tmp.setFromAxisAngle(eje, ang);
+      rot.premultiply(tmp);
+    }
+    function aplicar() {
+      modelos.forEach(m => {
+        m.object3D.quaternion.copy(rot);
+        m.object3D.scale.setScalar(escala);
+      });
+    }
+
+    // ====== Gestos táctiles ======
+    const SENS = 0.012;   // sensibilidad del giro
+    let ult = null, distIni = 0, escIni = 1, angIni = 0;
+    const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const ang  = (a, b) => Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
+    const esBoton = e => e.target.closest && e.target.closest('button');
+
+    window.addEventListener('touchstart', e => {
+      if (esBoton(e)) return;
+      if (e.touches.length === 1) ult = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      if (e.touches.length === 2) {
+        distIni = dist(e.touches[0], e.touches[1]); escIni = escala;
+        angIni = ang(e.touches[0], e.touches[1]); ult = null;
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchmove', e => {
+      if (esBoton(e)) return;
+      e.preventDefault();
+      if (e.touches.length === 1 && ult) {
+        const t = e.touches[0];
+        girar(EJE_Y, (t.clientX - ult.x) * SENS);   // izquierda / derecha
+        girar(EJE_X, (t.clientY - ult.y) * SENS);   // arriba / abajo (dar la vuelta)
+        ult = { x: t.clientX, y: t.clientY };
+        aplicar();
+      } else if (e.touches.length === 2) {
+        escala = Math.min(Math.max(escIni * dist(e.touches[0], e.touches[1]) / distIni, 0.2), 5);
+        const a = ang(e.touches[0], e.touches[1]);
+        girar(EJE_Z, -(a - angIni));                // torcer con dos dedos
+        angIni = a;
+        aplicar();
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', e => {
+      if (e.touches.length === 1) ult = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      if (e.touches.length === 0) ult = null;
+    });
+
+    // ====== Mouse (para probar en computadora) ======
+    let arrastrando = false, mx = 0, my = 0;
+    window.addEventListener('mousedown', e => { if (!esBoton(e)) { arrastrando = true; mx = e.clientX; my = e.clientY; } });
+    window.addEventListener('mouseup', () => arrastrando = false);
+    window.addEventListener('mousemove', e => {
+      if (!arrastrando) return;
+      girar(EJE_Y, (e.clientX - mx) * SENS); girar(EJE_X, (e.clientY - my) * SENS);
+      mx = e.clientX; my = e.clientY; aplicar();
+    });
+    window.addEventListener('wheel', e => {
+      escala = Math.min(Math.max(escala * (e.deltaY < 0 ? 1.1 : 0.9), 0.2), 5); aplicar();
+    });
+
+    // ====== Botones ======
+    document.getElementById('btnMas').onclick   = () => { escala = Math.min(escala * 1.2, 5); aplicar(); };
+    document.getElementById('btnMenos').onclick = () => { escala = Math.max(escala / 1.2, 0.2); aplicar(); };
+    document.getElementById('btnReset').onclick = () => {
+      rot.identity(); escala = 1; aplicar();
+      Object.keys(girando).forEach(k => girando[k] = false);
+      document.querySelectorAll('button.eje').forEach(b => b.classList.remove('activo'));
+    };
+    // Botones de giro por eje: cada toque prende / apaga ese eje
+    document.querySelectorAll('button.eje').forEach(b => {
+      b.onclick = () => {
+        const e = b.dataset.eje;
+        girando[e] = !girando[e];
+        b.classList.toggle('activo', girando[e]);
+      };
+    });
+
+    // Giro automático suave
+    let tAnt = performance.now();
+    (function bucle(t) {
+      const dt = (t - tAnt) / 1000; tAnt = t;
+      const VEL = 1.0;   // velocidad (radianes por segundo); cambia el signo para invertir
+      if (girando.x) girar(EJE_X,  dt * VEL);   // voltea hacia adelante
+      if (girando.y) girar(EJE_Y,  dt * VEL);   // vitrina: el frente va a la derecha
+      if (girando.z) girar(EJE_Z, -dt * VEL);   // como volante, en sentido del reloj
+      if (girando.x || girando.y || girando.z) aplicar();
+      requestAnimationFrame(bucle);
+    })(tAnt);
+  </script>
+</body>
+</html>

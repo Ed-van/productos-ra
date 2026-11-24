@@ -1,0 +1,27 @@
+VISUALIZADOR AR – 4 PRODUCTOS (un solo QR)
+==========================================
+
+Modelos incluidos (en este orden):
+  1. portacelular.jpg  -> Portacelular "León de Judá"
+  2. caja.jpg          -> Caja "Recuerdo de la Promoción"
+  3. medalla.jpg       -> Medalla "V Feria Educativa"
+  4. rosa.jpg          -> Portacelular rosa "X" con llavero
+
+PASO 1 – Crear targets.mind
+  Entra a: https://hiukim.github.io/mind-ar-js-doc/tools/compile
+  Arrastra las 4 fotos EN ESTE ORDEN: portacelular.jpg, caja.jpg, medalla.jpg, rosa.jpg
+  Clic en "Start" y luego en "Download compiled".
+  Guarda el archivo targets.mind en esta misma carpeta.
+
+PASO 2 – Subir a GitHub
+  Sube TODOS los archivos de esta carpeta (incluido targets.mind)
+  a tu repositorio. Si pregunta, acepta reemplazar.
+
+PASO 3 – Imprimir
+  Abre  https://TU-USUARIO.github.io/TU-REPOSITORIO/hoja.html
+  y haz clic en "Imprimir". Trae el QR y las 4 fotos.
+
+USO
+  Escanear el QR con la cámara del celular -> se abre la página.
+  Apuntar a cualquiera de las 4 fotos -> aparece su modelo 3D.
+  1 dedo: girar | 2 dedos: zoom | botones X Y Z: giro automático.
